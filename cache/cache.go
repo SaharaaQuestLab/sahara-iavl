@@ -2,8 +2,8 @@ package cache
 
 import (
 	"container/list"
-
 	ibytes "github.com/cosmos/iavl/internal/bytes"
+	"sync"
 )
 
 // Node represents a node eligible for caching.
@@ -45,6 +45,7 @@ type Cache interface {
 // customization and the ability to estimate the byte
 // size of the cache.
 type lruCache struct {
+	mu              sync.RWMutex
 	dict            map[string]*list.Element // FastNode cache.
 	maxElementCount int                      // FastNode the maximum number of nodes in the cache.
 	ll              *list.List               // LRU queue of cache elements. Used for deletion.
@@ -61,6 +62,9 @@ func New(maxElementCount int) Cache {
 }
 
 func (c *lruCache) Add(node Node) Node {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	key := string(node.GetKey())
 	if e, exists := c.dict[key]; exists {
 		c.ll.MoveToFront(e)
@@ -80,6 +84,9 @@ func (c *lruCache) Add(node Node) Node {
 }
 
 func (c *lruCache) Get(key []byte) Node {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	if ele, hit := c.dict[string(key)]; hit {
 		c.ll.MoveToFront(ele)
 		return ele.Value.(Node)
@@ -88,15 +95,24 @@ func (c *lruCache) Get(key []byte) Node {
 }
 
 func (c *lruCache) Has(key []byte) bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
 	_, exists := c.dict[string(key)]
 	return exists
 }
 
 func (c *lruCache) Len() int {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
 	return c.ll.Len()
 }
 
 func (c *lruCache) Remove(key []byte) Node {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	keyS := string(key)
 	if elem, exists := c.dict[keyS]; exists {
 		return c.removeWithKey(elem, keyS)
